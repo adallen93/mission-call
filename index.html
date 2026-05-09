@@ -446,10 +446,9 @@
         <button class="btn-primary" id="submit-btn" onclick="handleFormSubmit()">SUBMIT GUESS</button>
       </div>
 
-      <p style="font-size:0.38rem;color:#30363d;margin-top:20px;line-height:2;">
-        Your IP is hashed to prevent duplicate submissions.<br>
-        Firebase config keys in this repo are safe to commit.
-      </p>
+      <button class="btn-secondary" style="margin-top:16px;width:100%;" onclick="showMap(false)">
+        SKIP → VIEW THE MAP
+      </button>
     </div>
   </div>
 
@@ -829,7 +828,7 @@
     // Check if actual reveal already recorded
     await loadActualDoc();
 
-    // IP dedup with silent fail-open
+    // Silently fetch IP hash for storage purposes only (no redirect)
     let ipHash = null;
     try {
       const controller = new AbortController();
@@ -838,19 +837,8 @@
       clearTimeout(timer);
       const data = await res.json();
       ipHash = await sha256(data.ip);
-
-      const snap = await db.collection('guesses')
-        .where('ipHash', '==', ipHash)
-        .where('isActual', '==', false)
-        .limit(1)
-        .get();
-
-      if (!snap.empty) {
-        showMap(true);
-        return;
-      }
     } catch (_) {
-      // ipify failed — skip dedup, show form
+      // ipify failed — continue without IP hash
     }
 
     window._ipHash = ipHash;
