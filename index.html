@@ -1,0 +1,1337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Mission Call Reveal ★</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <script src="firebase-config.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0d1117;
+      color: #e0e0e0;
+      font-family: 'Press Start 2P', monospace;
+      height: 100dvh;
+      overflow: hidden;
+    }
+
+    /* ── Screens ── */
+    .screen {
+      position: fixed;
+      inset: 0;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+    }
+    .screen.active { display: flex; }
+
+    /* ── Loading ── */
+    #screen-loading {
+      justify-content: center;
+      gap: 20px;
+    }
+    .spinner {
+      width: 48px; height: 48px;
+      border: 4px solid #30363d;
+      border-top-color: #00bcd4;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Form screen ── */
+    #screen-form {
+      overflow-y: auto;
+      padding: 20px 16px 40px;
+    }
+    #starfield {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+    }
+    .form-container {
+      position: relative;
+      z-index: 1;
+      max-width: 480px;
+      width: 100%;
+      text-align: center;
+      padding: 20px 0;
+    }
+
+    /* ── Titles ── */
+    .app-title {
+      font-size: clamp(0.8rem, 3vw, 1.3rem);
+      color: #00bcd4;
+      text-shadow: 0 0 18px #00bcd480, 0 0 40px #00bcd430;
+      letter-spacing: 3px;
+      cursor: default;
+      user-select: none;
+      line-height: 1.6;
+      margin-bottom: 4px;
+    }
+    .app-subtitle {
+      font-size: clamp(0.5rem, 2vw, 0.7rem);
+      color: #58a6ff;
+      letter-spacing: 2px;
+      margin-bottom: 6px;
+    }
+    .flavor-text {
+      font-size: 0.5rem;
+      color: #8b949e;
+      line-height: 2;
+      margin: 16px 0 28px;
+    }
+
+    /* ── Form card ── */
+    .form-card {
+      background: rgba(22, 27, 34, 0.92);
+      border: 1px solid #30363d;
+      border-radius: 14px;
+      padding: 28px 24px;
+      text-align: left;
+    }
+    .field-group {
+      margin-bottom: 22px;
+    }
+    .field-label {
+      display: block;
+      font-size: 0.5rem;
+      color: #00bcd4;
+      margin-bottom: 8px;
+      letter-spacing: 1px;
+    }
+    .field-label .optional-tag {
+      color: #8b949e;
+      font-size: 0.4rem;
+    }
+    input[type="text"], input[type="password"], select {
+      width: 100%;
+      background: #0d1117;
+      border: 2px solid #30363d;
+      border-radius: 8px;
+      color: #e0e0e0;
+      font-family: 'Press Start 2P', monospace;
+      font-size: 0.55rem;
+      padding: 12px 10px;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      appearance: none;
+      -webkit-appearance: none;
+    }
+    input[type="text"]:focus, input[type="password"]:focus, select:focus {
+      outline: none;
+      border-color: #00bcd4;
+      box-shadow: 0 0 10px #00bcd430;
+    }
+    select option { background: #161b22; }
+
+    .guess-divider {
+      text-align: center;
+      font-size: 0.45rem;
+      color: #30363d;
+      margin: 20px 0;
+      position: relative;
+    }
+    .guess-divider::before, .guess-divider::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      width: 38%;
+      height: 1px;
+      background: #30363d;
+    }
+    .guess-divider::before { left: 0; }
+    .guess-divider::after { right: 0; }
+
+    .form-note {
+      font-size: 0.42rem;
+      color: #8b949e;
+      text-align: center;
+      margin-bottom: 20px;
+      line-height: 2;
+    }
+    .form-note .highlight { color: #00bcd4; }
+
+    #form-error {
+      font-size: 0.45rem;
+      color: #f85149;
+      text-align: center;
+      min-height: 18px;
+      margin-bottom: 8px;
+    }
+
+    .btn-primary {
+      width: 100%;
+      padding: 14px;
+      background: #00bcd4;
+      border: none;
+      border-radius: 8px;
+      color: #0d1117;
+      font-family: 'Press Start 2P', monospace;
+      font-size: 0.65rem;
+      cursor: pointer;
+      transition: background 0.2s, box-shadow 0.2s, transform 0.1s;
+      letter-spacing: 1px;
+    }
+    .btn-primary:hover:not(:disabled) {
+      background: #4dd0e1;
+      box-shadow: 0 0 20px #00bcd460;
+    }
+    .btn-primary:active:not(:disabled) { transform: scale(0.98); }
+    .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    .btn-secondary {
+      padding: 10px 20px;
+      background: transparent;
+      border: 2px solid #30363d;
+      border-radius: 8px;
+      color: #8b949e;
+      font-family: 'Press Start 2P', monospace;
+      font-size: 0.5rem;
+      cursor: pointer;
+      transition: border-color 0.2s, color 0.2s;
+    }
+    .btn-secondary:hover { border-color: #00bcd4; color: #00bcd4; }
+
+    .reveal-notice {
+      background: rgba(88, 166, 255, 0.1);
+      border: 1px solid #58a6ff40;
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 0.45rem;
+      color: #58a6ff;
+      text-align: center;
+      margin-bottom: 20px;
+      line-height: 2;
+    }
+
+    /* ── Map screen ── */
+    #screen-map { position: fixed; inset: 0; }
+    #map { width: 100%; height: 100%; }
+
+    #map-header {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      right: 12px;
+      z-index: 1000;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      align-items: flex-start;
+    }
+    .map-title-card {
+      background: rgba(13, 17, 23, 0.88);
+      backdrop-filter: blur(8px);
+      border: 1px solid #00bcd440;
+      border-radius: 10px;
+      padding: 10px 16px;
+      pointer-events: auto;
+    }
+    .map-app-title {
+      font-size: clamp(0.5rem, 2.5vw, 0.75rem);
+      color: #00bcd4;
+      text-shadow: 0 0 12px #00bcd460;
+      letter-spacing: 2px;
+      user-select: none;
+      cursor: default;
+    }
+    #map-stats {
+      font-size: 0.4rem;
+      color: #8b949e;
+      margin-top: 5px;
+      line-height: 1.8;
+    }
+    #winner-banner {
+      background: rgba(255, 215, 0, 0.12);
+      border: 1px solid #FFD70080;
+      border-radius: 10px;
+      padding: 10px 16px;
+      font-size: 0.5rem;
+      color: #FFD700;
+      pointer-events: auto;
+      display: none;
+    }
+
+    /* ── Modals ── */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.75);
+      z-index: 2000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .modal-overlay.active { display: flex; }
+    .modal-box {
+      background: #161b22;
+      border: 2px solid #00bcd4;
+      border-radius: 14px;
+      padding: 28px 24px;
+      max-width: 420px;
+      width: 100%;
+      text-align: center;
+    }
+    .modal-title {
+      font-size: 0.7rem;
+      color: #00bcd4;
+      margin-bottom: 8px;
+      letter-spacing: 2px;
+    }
+    .modal-body {
+      font-size: 0.45rem;
+      color: #8b949e;
+      margin-bottom: 20px;
+      line-height: 2;
+    }
+    .modal-error {
+      font-size: 0.42rem;
+      color: #f85149;
+      min-height: 16px;
+      margin-bottom: 10px;
+    }
+    .modal-actions { display: flex; gap: 10px; justify-content: center; }
+
+    .radio-group {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      margin: 16px 0;
+    }
+    .radio-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.5rem;
+      color: #e0e0e0;
+      cursor: pointer;
+    }
+    .radio-label input[type="radio"] { accent-color: #00bcd4; transform: scale(1.3); }
+    .admin-select-group { margin-bottom: 16px; text-align: left; }
+
+    /* ── Toast ── */
+    #toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(22, 27, 34, 0.95);
+      border: 1px solid #00bcd440;
+      border-radius: 8px;
+      padding: 12px 20px;
+      font-size: 0.45rem;
+      color: #e0e0e0;
+      z-index: 3000;
+      opacity: 0;
+      transition: opacity 0.35s;
+      max-width: 90%;
+      text-align: center;
+      line-height: 2;
+      pointer-events: none;
+    }
+    #toast.visible { opacity: 1; }
+
+    /* ── Leaflet overrides ── */
+    .leaflet-popup-content-wrapper {
+      background: #161b22 !important;
+      color: #e0e0e0 !important;
+      border: 1px solid #00bcd440 !important;
+      border-radius: 8px !important;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.6) !important;
+      font-family: 'Press Start 2P', monospace !important;
+      font-size: 0.48rem !important;
+      line-height: 2 !important;
+    }
+    .leaflet-popup-tip { background: #161b22 !important; }
+    .leaflet-popup-close-button { color: #00bcd4 !important; font-size: 18px !important; }
+    .leaflet-control-zoom a {
+      background: #161b22 !important;
+      color: #00bcd4 !important;
+      border-color: #30363d !important;
+    }
+    .leaflet-control-attribution {
+      background: rgba(13,17,23,0.7) !important;
+      color: #8b949e !important;
+      font-family: sans-serif !important;
+    }
+    .leaflet-control-attribution a { color: #58a6ff !important; }
+
+    /* ── Crewmate & pin animations ── */
+    @keyframes pinPopIn {
+      0%   { transform: scale(0) translateY(12px); opacity: 0; }
+      75%  { transform: scale(1.15) translateY(-3px); opacity: 1; }
+      100% { transform: scale(1) translateY(0); opacity: 1; }
+    }
+    .crewmate-pin { animation: pinPopIn 0.38s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+
+    @keyframes pulseGlow {
+      0%, 100% { filter: drop-shadow(0 0 6px #FFD700) drop-shadow(0 0 14px #FFD700); }
+      50%       { filter: drop-shadow(0 0 14px #FFD700) drop-shadow(0 0 28px #FF8C00); }
+    }
+    .actual-star { animation: pulseGlow 2s ease-in-out infinite; }
+
+    @keyframes winnerGlow {
+      0%, 100% { filter: drop-shadow(0 0 5px currentColor) drop-shadow(0 0 10px currentColor); }
+      50%       { filter: drop-shadow(0 0 10px currentColor) drop-shadow(0 0 20px currentColor); }
+    }
+    .winner-marker { animation: winnerGlow 1.8s ease-in-out infinite; }
+  </style>
+</head>
+<body>
+
+  <!-- Loading screen -->
+  <div class="screen active" id="screen-loading">
+    <div class="spinner"></div>
+    <div style="font-size:0.5rem;color:#8b949e;">LOADING...</div>
+  </div>
+
+  <!-- Form screen -->
+  <div class="screen" id="screen-form">
+    <canvas id="starfield"></canvas>
+    <div class="form-container">
+      <div class="app-title">MISSION CALL</div>
+      <div class="app-subtitle">REVEAL</div>
+      <p class="flavor-text">
+        Where in the world will the call be?<br>
+        Submit your guess before the big reveal!
+      </p>
+
+      <div id="reveal-notice" class="reveal-notice" style="display:none">
+        ★ The reveal has already happened! ★<br>
+        You can still submit a guess to see how you'd rank.
+      </div>
+
+      <div class="form-card">
+        <p class="form-note">
+          Submit <span class="highlight">at least one guess</span> — both is allowed!<br>
+          Only the guess matching the actual call type will count.
+        </p>
+
+        <div class="field-group">
+          <label class="field-label" for="name-input">YOUR NAME <span class="optional-tag">*</span></label>
+          <input type="text" id="name-input" placeholder="Enter your name" autocomplete="off" maxlength="40">
+        </div>
+
+        <div class="field-group">
+          <label class="field-label" for="state-select">
+            US STATE GUESS <span class="optional-tag">(optional)</span>
+          </label>
+          <select id="state-select">
+            <option value="">-- Skip in-state guess --</option>
+          </select>
+        </div>
+
+        <div class="guess-divider">OR BOTH</div>
+
+        <div class="field-group">
+          <label class="field-label" for="country-select">
+            INTERNATIONAL GUESS <span class="optional-tag">(optional)</span>
+          </label>
+          <select id="country-select">
+            <option value="">-- Skip international guess --</option>
+          </select>
+        </div>
+
+        <div id="form-error"></div>
+        <button class="btn-primary" id="submit-btn" onclick="handleFormSubmit()">SUBMIT GUESS</button>
+      </div>
+
+      <p style="font-size:0.38rem;color:#30363d;margin-top:20px;line-height:2;">
+        Your IP is hashed to prevent duplicate submissions.<br>
+        Firebase config keys in this repo are safe to commit.
+      </p>
+    </div>
+  </div>
+
+  <!-- Map screen -->
+  <div class="screen" id="screen-map">
+    <div id="map"></div>
+    <div id="map-header">
+      <div class="map-title-card">
+        <div class="map-app-title app-title">MISSION CALL REVEAL</div>
+        <div id="map-stats">Loading...</div>
+      </div>
+      <div id="winner-banner">★ WINNER: <span id="winner-name"></span> ★</div>
+    </div>
+  </div>
+
+  <!-- Password modal -->
+  <div class="modal-overlay" id="modal-password">
+    <div class="modal-box">
+      <div class="modal-title">ADMIN ACCESS</div>
+      <div class="modal-body">Enter the admin password to reveal the actual mission call location.</div>
+      <div class="field-group">
+        <input type="password" id="password-input" placeholder="Password" autocomplete="off"
+               onkeydown="if(event.key==='Enter')handlePasswordSubmit()">
+      </div>
+      <div class="modal-error" id="password-error"></div>
+      <div class="modal-actions">
+        <button class="btn-secondary" onclick="hidePasswordModal()">CANCEL</button>
+        <button class="btn-primary" style="width:auto;padding:10px 24px;" onclick="handlePasswordSubmit()">VERIFY</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Admin reveal modal -->
+  <div class="modal-overlay" id="modal-admin">
+    <div class="modal-box">
+      <div class="modal-title">★ ADMIN REVEAL ★</div>
+
+      <div id="admin-already-revealed" style="display:none">
+        <div class="modal-body">
+          The actual location has already been revealed:<br>
+          <span style="color:#FFD700;" id="admin-revealed-location"></span>
+        </div>
+        <button class="btn-secondary" onclick="hideAdminForm()">CLOSE</button>
+      </div>
+
+      <div id="admin-reveal-form">
+        <div class="modal-body">Select the actual mission call type and location.</div>
+        <div class="radio-group">
+          <label class="radio-label">
+            <input type="radio" name="actual-type" value="inState" checked onchange="updateAdminDropdownVisibility()">
+            US State
+          </label>
+          <label class="radio-label">
+            <input type="radio" name="actual-type" value="outOfState" onchange="updateAdminDropdownVisibility()">
+            International
+          </label>
+        </div>
+        <div class="admin-select-group" id="admin-state-group">
+          <label class="field-label">US STATE</label>
+          <select id="admin-state-select"><option value="">-- Select state --</option></select>
+        </div>
+        <div class="admin-select-group" id="admin-country-group" style="display:none">
+          <label class="field-label">COUNTRY</label>
+          <select id="admin-country-select"><option value="">-- Select country --</option></select>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:16px;">
+          <button class="btn-secondary" onclick="hideAdminForm()">CANCEL</button>
+          <button class="btn-primary" style="width:auto;flex:1;" id="admin-submit-btn" onclick="handleAdminSubmit()">REVEAL NOW</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast"></div>
+
+  <script>
+  // ═══════════════════════════════════════════════════════
+  // CONSTANTS
+  // ═══════════════════════════════════════════════════════
+
+  // SHA-256 of "PresOaks" — never store the plaintext
+  const ADMIN_HASH = 'a51ebe50d3811b3da3bcc98aa6710b49e242953b6bc12763a7cbf330e48710e2';
+
+  const CREW_COLORS = [
+    '#c41e3a','#132ed2','#117f2d','#ed54ba',
+    '#ef7d0e','#f5f558','#6b2fbb','#38fedc',
+    '#50ef39','#71491e','#ec7578','#44dfcb',
+  ];
+
+  const IP_TIMEOUT_MS = 3000;
+
+  // ═══════════════════════════════════════════════════════
+  // COORDINATE DATA — US States (geographic centers)
+  // ═══════════════════════════════════════════════════════
+  const US_STATES = {
+    'Alabama':        [32.806671, -86.791130],
+    'Alaska':         [61.370716,-152.404419],
+    'Arizona':        [33.729759,-111.431221],
+    'Arkansas':       [34.969704, -92.373123],
+    'California':     [36.116203,-119.681564],
+    'Colorado':       [39.059811,-105.311104],
+    'Connecticut':    [41.597782, -72.755371],
+    'Delaware':       [39.318523, -75.507141],
+    'Florida':        [27.766279, -81.686783],
+    'Georgia':        [33.040619, -83.643074],
+    'Hawaii':         [21.094318,-157.498337],
+    'Idaho':          [44.240459,-114.478828],
+    'Illinois':       [40.349457, -88.986137],
+    'Indiana':        [39.849426, -86.258278],
+    'Iowa':           [42.011539, -93.210526],
+    'Kansas':         [38.526600, -96.726486],
+    'Kentucky':       [37.668140, -84.670067],
+    'Louisiana':      [31.169960, -91.867805],
+    'Maine':          [44.693947, -69.381927],
+    'Maryland':       [39.063946, -76.802101],
+    'Massachusetts':  [42.230171, -71.530106],
+    'Michigan':       [43.326618, -84.536095],
+    'Minnesota':      [45.694454, -93.900192],
+    'Mississippi':    [32.741646, -89.678696],
+    'Missouri':       [38.456085, -92.288368],
+    'Montana':        [46.921925,-110.454353],
+    'Nebraska':       [41.125370, -98.268082],
+    'Nevada':         [38.313515,-117.055374],
+    'New Hampshire':  [43.452492, -71.563896],
+    'New Jersey':     [40.298904, -74.521011],
+    'New Mexico':     [34.840515,-106.248482],
+    'New York':       [42.165726, -74.948051],
+    'North Carolina': [35.630066, -79.806419],
+    'North Dakota':   [47.528912, -99.784012],
+    'Ohio':           [40.388783, -82.764915],
+    'Oklahoma':       [35.565342, -96.928917],
+    'Oregon':         [44.572021,-122.070938],
+    'Pennsylvania':   [40.590752, -77.209755],
+    'Rhode Island':   [41.680893, -71.511780],
+    'South Carolina': [33.856892, -80.945007],
+    'South Dakota':   [44.299782, -99.438828],
+    'Tennessee':      [35.747845, -86.692345],
+    'Texas':          [31.054487, -97.563461],
+    'Utah':           [40.150032,-111.862434],
+    'Vermont':        [44.045876, -72.710686],
+    'Virginia':       [37.769337, -78.169968],
+    'Washington':     [47.400902,-121.490494],
+    'West Virginia':  [38.491226, -80.954453],
+    'Wisconsin':      [44.268543, -89.616508],
+    'Wyoming':        [42.755966,-107.302490],
+  };
+
+  // ═══════════════════════════════════════════════════════
+  // COORDINATE DATA — Countries (geographic centers)
+  // ═══════════════════════════════════════════════════════
+  const COUNTRIES = {
+    // North America
+    'Canada':                   [ 56.1304,-106.3468],
+    'Mexico':                   [ 23.6345,-102.5528],
+    // Central America
+    'Guatemala':                [ 15.7835, -90.2308],
+    'Belize':                   [ 17.1899, -88.4976],
+    'El Salvador':              [ 13.7942, -88.8965],
+    'Honduras':                 [ 15.1999, -86.2419],
+    'Nicaragua':                [ 12.8654, -85.2072],
+    'Costa Rica':               [  9.7489, -83.7534],
+    'Panama':                   [  8.5380, -80.7821],
+    // Caribbean
+    'Cuba':                     [ 21.5218, -77.7812],
+    'Jamaica':                  [ 18.1096, -77.2975],
+    'Haiti':                    [ 18.9712, -72.2852],
+    'Dominican Republic':       [ 18.7357, -70.1627],
+    'Puerto Rico':              [ 18.2208, -66.5901],
+    'Trinidad and Tobago':      [ 10.6918, -61.2225],
+    'Bahamas':                  [ 25.0343, -77.3963],
+    'Barbados':                 [ 13.1939, -59.5432],
+    'Guadeloupe':               [ 16.2650, -61.5510],
+    'Martinique':               [ 14.6415, -61.0242],
+    // South America
+    'Colombia':                 [  4.5709, -74.2973],
+    'Venezuela':                [  6.4238, -66.5897],
+    'Guyana':                   [  4.8604, -58.9302],
+    'Suriname':                 [  3.9193, -56.0278],
+    'Brazil':                   [-14.2350, -51.9253],
+    'Ecuador':                  [ -1.8312, -78.1834],
+    'Peru':                     [ -9.1900, -75.0152],
+    'Bolivia':                  [-16.2902, -63.5887],
+    'Chile':                    [-35.6751, -71.5430],
+    'Argentina':                [-38.4161, -63.6167],
+    'Uruguay':                  [-32.5228, -55.7658],
+    'Paraguay':                 [-23.4425, -58.4438],
+    // Europe
+    'Iceland':                  [ 64.9631, -19.0208],
+    'Norway':                   [ 60.4720,   8.4689],
+    'Sweden':                   [ 60.1282,  18.6435],
+    'Finland':                  [ 61.9241,  25.7482],
+    'Denmark':                  [ 56.2639,   9.5018],
+    'United Kingdom':           [ 55.3781,  -3.4360],
+    'Ireland':                  [ 53.4129,  -8.2439],
+    'Netherlands':              [ 52.1326,   5.2913],
+    'Belgium':                  [ 50.5039,   4.4699],
+    'Luxembourg':               [ 49.8153,   6.1296],
+    'France':                   [ 46.2276,   2.2137],
+    'Spain':                    [ 40.4637,  -3.7492],
+    'Portugal':                 [ 39.3999,  -8.2245],
+    'Germany':                  [ 51.1657,  10.4515],
+    'Switzerland':              [ 46.8182,   8.2275],
+    'Austria':                  [ 47.5162,  14.5501],
+    'Italy':                    [ 41.8719,  12.5674],
+    'Malta':                    [ 35.9375,  14.3754],
+    'Greece':                   [ 39.0742,  21.8243],
+    'Cyprus':                   [ 35.1264,  33.4299],
+    'Poland':                   [ 51.9194,  19.1451],
+    'Czech Republic':           [ 49.8175,  15.4730],
+    'Slovakia':                 [ 48.6690,  19.6990],
+    'Hungary':                  [ 47.1625,  19.5033],
+    'Romania':                  [ 45.9432,  24.9668],
+    'Bulgaria':                 [ 42.7339,  25.4858],
+    'Slovenia':                 [ 46.1512,  14.9955],
+    'Croatia':                  [ 45.1000,  15.2000],
+    'Bosnia and Herzegovina':   [ 43.9159,  17.6791],
+    'Serbia':                   [ 44.0165,  21.0059],
+    'Montenegro':               [ 42.7087,  19.3744],
+    'North Macedonia':          [ 41.6086,  21.7453],
+    'Albania':                  [ 41.1533,  20.1683],
+    'Kosovo':                   [ 42.6026,  20.9030],
+    'Estonia':                  [ 58.5953,  25.0136],
+    'Latvia':                   [ 56.8796,  24.6032],
+    'Lithuania':                [ 55.1694,  23.8813],
+    'Belarus':                  [ 53.7098,  27.9534],
+    'Ukraine':                  [ 48.3794,  31.1656],
+    'Moldova':                  [ 47.4116,  28.3699],
+    'Russia':                   [ 61.5240, 105.3188],
+    // Middle East / Caucasus
+    'Turkey':                   [ 38.9637,  35.2433],
+    'Georgia (country)':        [ 42.3154,  43.3569],
+    'Armenia':                  [ 40.0691,  45.0382],
+    'Azerbaijan':               [ 40.1431,  47.5769],
+    'Israel':                   [ 31.0461,  34.8516],
+    'Lebanon':                  [ 33.8547,  35.8623],
+    'Jordan':                   [ 30.5852,  36.2384],
+    'Saudi Arabia':             [ 23.8859,  45.0792],
+    'Kuwait':                   [ 29.3117,  47.4818],
+    'Bahrain':                  [ 25.9304,  50.6378],
+    'Qatar':                    [ 25.3548,  51.1839],
+    'United Arab Emirates':     [ 23.4241,  53.8478],
+    'Oman':                     [ 21.5126,  55.9233],
+    'Yemen':                    [ 15.5527,  48.5164],
+    // Africa
+    'Morocco':                  [ 31.7917,  -7.0926],
+    'Algeria':                  [ 28.0339,   1.6596],
+    'Tunisia':                  [ 33.8869,   9.5375],
+    'Libya':                    [ 26.3351,  17.2283],
+    'Egypt':                    [ 26.8206,  30.8025],
+    'Sudan':                    [ 12.8628,  30.2176],
+    'South Sudan':              [  6.8770,  31.3070],
+    'Ethiopia':                 [  9.1450,  40.4897],
+    'Eritrea':                  [ 15.1794,  39.7823],
+    'Djibouti':                 [ 11.8251,  42.5903],
+    'Somalia':                  [  5.1521,  46.1996],
+    'Kenya':                    [ -0.0236,  37.9062],
+    'Uganda':                   [  1.3733,  32.2903],
+    'Rwanda':                   [ -1.9403,  29.8739],
+    'Burundi':                  [ -3.3731,  29.9189],
+    'Tanzania':                 [ -6.3690,  34.8888],
+    'Mozambique':               [-18.6657,  35.5296],
+    'Madagascar':               [-18.7669,  46.8691],
+    'Malawi':                   [-13.2543,  34.3015],
+    'Zambia':                   [-13.1339,  27.8493],
+    'Zimbabwe':                 [-19.0154,  29.1549],
+    'Botswana':                 [-22.3285,  24.6849],
+    'Namibia':                  [-22.9576,  18.4904],
+    'South Africa':             [-30.5595,  22.9375],
+    'Lesotho':                  [-29.6100,  28.2336],
+    'Eswatini':                 [-26.5225,  31.4659],
+    'Senegal':                  [ 14.4974, -14.4524],
+    'Gambia':                   [ 13.4432, -15.3101],
+    'Guinea-Bissau':            [ 11.8037, -15.1804],
+    'Guinea':                   [  9.9456, -11.3247],
+    'Sierra Leone':             [  8.4606, -11.7799],
+    'Liberia':                  [  6.4281,  -9.4295],
+    "Côte d'Ivoire":            [  7.5400,  -5.5471],
+    'Ghana':                    [  7.9465,  -1.0232],
+    'Togo':                     [  8.6195,   0.8248],
+    'Benin':                    [  9.3077,   2.3158],
+    'Nigeria':                  [  9.0820,   8.6753],
+    'Niger':                    [ 17.6078,   8.0817],
+    'Chad':                     [ 15.4542,  18.7322],
+    'Mali':                     [ 17.5707,  -3.9962],
+    'Burkina Faso':             [ 12.3640,  -1.5616],
+    'Mauritania':               [ 21.0079, -10.9408],
+    'Cameroon':                 [  3.8480,  11.5021],
+    'Central African Republic': [  6.6111,  20.9394],
+    'DR Congo':                 [ -4.0383,  21.7587],
+    'Republic of the Congo':    [ -0.2280,  15.8277],
+    'Gabon':                    [ -0.8037,  11.6094],
+    'Equatorial Guinea':        [  1.6508,  10.2679],
+    'Angola':                   [-11.2027,  17.8739],
+    'Cape Verde':               [ 16.5388, -23.0418],
+    'Comoros':                  [-11.6455,  43.3333],
+    'Seychelles':               [ -4.6796,  55.4920],
+    'Mauritius':                [-20.3484,  57.5522],
+    'Reunion':                  [-21.1151,  55.5364],
+    // Central / South Asia
+    'Kazakhstan':               [ 48.0196,  66.9237],
+    'Uzbekistan':               [ 41.3775,  64.5853],
+    'Turkmenistan':             [ 38.9697,  59.5563],
+    'Tajikistan':               [ 38.8610,  71.2761],
+    'Kyrgyzstan':               [ 41.2044,  74.7661],
+    'Afghanistan':              [ 33.9391,  67.7100],
+    'Pakistan':                 [ 30.3753,  69.3451],
+    'India':                    [ 20.5937,  78.9629],
+    'Nepal':                    [ 28.3949,  84.1240],
+    'Bhutan':                   [ 27.5142,  90.4336],
+    'Sri Lanka':                [  7.8731,  80.7718],
+    'Maldives':                 [  3.2028,  73.2207],
+    'Bangladesh':               [ 23.6850,  90.3563],
+    'Myanmar':                  [ 21.9162,  95.9560],
+    // East & Southeast Asia
+    'China':                    [ 35.8617, 104.1954],
+    'Mongolia':                 [ 46.8625, 103.8467],
+    'North Korea':              [ 40.3399, 127.5101],
+    'South Korea':              [ 35.9078, 127.7669],
+    'Japan':                    [ 36.2048, 138.2529],
+    'Taiwan':                   [ 23.6978, 120.9605],
+    'Vietnam':                  [ 14.0583, 108.2772],
+    'Laos':                     [ 19.8563, 102.4955],
+    'Cambodia':                 [ 12.5657, 104.9910],
+    'Thailand':                 [ 15.8700, 100.9925],
+    'Malaysia':                 [  4.2105, 101.9758],
+    'Singapore':                [  1.3521, 103.8198],
+    'Indonesia':                [ -0.7893, 113.9213],
+    'Philippines':              [ 12.8797, 121.7740],
+    'Brunei':                   [  4.5353, 114.7277],
+    'Timor-Leste':              [ -8.8742, 125.7275],
+    'Hong Kong':                [ 22.3193, 114.1694],
+    'Macau':                    [ 22.1987, 113.5439],
+    // Oceania
+    'Australia':                [-25.2744, 133.7751],
+    'New Zealand':              [-40.9006, 174.8860],
+    'Papua New Guinea':         [ -6.3150, 143.9555],
+    'Fiji':                     [-17.7134, 178.0650],
+    'Solomon Islands':          [ -9.6457, 160.1562],
+    'Vanuatu':                  [-15.3767, 166.9592],
+    'Samoa':                    [-13.7590,-172.1046],
+    'Tonga':                    [-21.1790,-175.1982],
+    'Kiribati':                 [ -3.3704,-168.7340],
+    'Micronesia':               [  7.4256, 150.5508],
+    'Palau':                    [  7.5150, 134.5825],
+    'Marshall Islands':         [  7.1315, 171.1845],
+    'Nauru':                    [ -0.5228, 166.9315],
+    'Tuvalu':                   [ -7.1095, 177.6493],
+    'Cook Islands':             [-21.2367,-159.7777],
+    'American Samoa':           [-14.2710,-170.1322],
+    'Guam':                     [ 13.4443, 144.7937],
+  };
+
+  // ═══════════════════════════════════════════════════════
+  // STATE
+  // ═══════════════════════════════════════════════════════
+  let db;
+  let leafletMap = null;
+  let guessesUnsubscribe = null;
+  let allGuesses = [];
+  let actualDoc = null;
+  let titleClickCount = 0;
+  let titleClickTimer = null;
+
+  // ═══════════════════════════════════════════════════════
+  // INIT
+  // ═══════════════════════════════════════════════════════
+  async function initApp() {
+    firebase.initializeApp(window.firebaseConfig);
+    db = firebase.firestore();
+
+    // Admin trigger on both screens
+    document.addEventListener('click', e => {
+      if (e.target.closest('.app-title')) handleTitleClick();
+    });
+
+    // Check if actual reveal already recorded
+    await loadActualDoc();
+
+    // IP dedup with silent fail-open
+    let ipHash = null;
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), IP_TIMEOUT_MS);
+      const res = await fetch('https://api.ipify.org?format=json', { signal: controller.signal });
+      clearTimeout(timer);
+      const data = await res.json();
+      ipHash = await sha256(data.ip);
+
+      const snap = await db.collection('guesses')
+        .where('ipHash', '==', ipHash)
+        .where('isActual', '==', false)
+        .limit(1)
+        .get();
+
+      if (!snap.empty) {
+        showMap(true);
+        return;
+      }
+    } catch (_) {
+      // ipify failed — skip dedup, show form
+    }
+
+    window._ipHash = ipHash;
+    showForm();
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // CRYPTO HELPERS
+  // ═══════════════════════════════════════════════════════
+  async function sha256(str) {
+    const buf = new TextEncoder().encode(str);
+    const hash = await crypto.subtle.digest('SHA-256', buf);
+    return Array.from(new Uint8Array(hash))
+      .map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  function haversineDistance(lat1, lon1, lat2, lon2) {
+    const R = 3958.8;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) ** 2
+      + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180)
+      * Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // SCREEN HELPERS
+  // ═══════════════════════════════════════════════════════
+  function showScreen(id) {
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+  }
+
+  function showForm() {
+    showScreen('screen-form');
+    initStarfield();
+    populateDropdowns();
+    if (actualDoc) {
+      document.getElementById('reveal-notice').style.display = 'block';
+    }
+  }
+
+  function showMap(isDupe = false) {
+    showScreen('screen-map');
+    initLeafletMap();
+    startGuessesListener();
+    if (isDupe) {
+      setTimeout(() => showToast('Someone from your network already submitted a guess!'), 800);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // STARFIELD
+  // ═══════════════════════════════════════════════════════
+  function initStarfield() {
+    const canvas = document.getElementById('starfield');
+    if (canvas._running) return;
+    canvas._running = true;
+    const ctx = canvas.getContext('2d');
+    const stars = Array.from({ length: 220 }, () => ({
+      x: Math.random(),
+      y: Math.random(),
+      r: Math.random() * 1.4 + 0.4,
+      op: Math.random(),
+      delta: (Math.random() - 0.5) * 0.025,
+    }));
+    function frame() {
+      canvas.width  = window.innerWidth;
+      canvas.height = window.innerHeight;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      stars.forEach(s => {
+        s.op = Math.max(0.05, Math.min(1, s.op + s.delta));
+        if (Math.random() < 0.005) s.delta *= -1;
+        ctx.beginPath();
+        ctx.arc(s.x * canvas.width, s.y * canvas.height, s.r, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255,255,255,${s.op.toFixed(2)})`;
+        ctx.fill();
+      });
+      if (canvas._running) requestAnimationFrame(frame);
+    }
+    frame();
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // MAP
+  // ═══════════════════════════════════════════════════════
+  function initLeafletMap() {
+    if (leafletMap) return;
+    leafletMap = L.map('map', { center: [20, 0], zoom: 2, zoomControl: true });
+    L.tileLayer(
+      `https://tile.jawg.io/jawg-dark/{z}/{x}/{y}{r}.png?access-token=${window.JAWG_TOKEN}`,
+      { maxZoom: 18, attribution: '<a href="https://jawg.io" target="_blank">© Jawg Maps</a>' }
+    ).addTo(leafletMap);
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // FIRESTORE
+  // ═══════════════════════════════════════════════════════
+  async function loadActualDoc() {
+    try {
+      const snap = await db.collection('guesses').doc('actual').get();
+      actualDoc = snap.exists ? snap.data() : null;
+    } catch (_) {
+      actualDoc = null;
+    }
+  }
+
+  function startGuessesListener() {
+    if (guessesUnsubscribe) return;
+    guessesUnsubscribe = db.collection('guesses').onSnapshot(snapshot => {
+      allGuesses = [];
+      actualDoc = null;
+      snapshot.forEach(doc => {
+        const d = { id: doc.id, ...doc.data() };
+        if (d.isActual) actualDoc = d;
+        else allGuesses.push(d);
+      });
+      renderPins();
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // RANKING
+  // ═══════════════════════════════════════════════════════
+  function computeRankings(guesses, actual) {
+    if (!actual) return guesses.map(g => ({ guess: g, distance: null }));
+
+    const key    = actual.actualType; // 'inState' or 'outOfState'
+    const coordKey = key + 'Coords';
+    const aLat   = actual.coords.lat;
+    const aLng   = actual.coords.lng;
+
+    const entries = guesses.map(g => {
+      const coord = g[coordKey];
+      return {
+        guess: g,
+        distance: (coord && coord.lat != null)
+          ? haversineDistance(coord.lat, coord.lng, aLat, aLng)
+          : null,
+      };
+    });
+
+    entries.sort((a, b) => {
+      if (a.distance === null && b.distance === null) return 0;
+      if (a.distance === null) return 1;
+      if (b.distance === null) return -1;
+      return a.distance - b.distance;
+    });
+
+    return entries;
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // RENDER PINS
+  // ═══════════════════════════════════════════════════════
+  function renderPins() {
+    if (!leafletMap) return;
+
+    // Remove existing markers
+    leafletMap.eachLayer(layer => {
+      if (layer instanceof L.Marker) leafletMap.removeLayer(layer);
+    });
+
+    const rankings = computeRankings(allGuesses, actualDoc);
+    const colorMap = {};
+    rankings.forEach((entry, i) => {
+      colorMap[entry.guess.id] = CREW_COLORS[i % CREW_COLORS.length];
+    });
+
+    rankings.forEach((entry, rank) => {
+      const g     = entry.guess;
+      const color = colorMap[g.id];
+      const isWinner = (rank === 0 && entry.distance !== null && actualDoc !== null);
+      const pins  = [];
+
+      if (g.inState && g.inStateCoords) {
+        pins.push({ coord: g.inStateCoords, label: g.inState, type: 'inState' });
+      }
+      if (g.outOfState && g.outOfStateCoords) {
+        pins.push({ coord: g.outOfStateCoords, label: g.outOfState, type: 'outOfState' });
+      }
+
+      pins.forEach(pin => {
+        const icon       = createCrewmateIcon(color, isWinner);
+        const isScored   = actualDoc && pin.type === actualDoc.actualType;
+        const distText   = (isScored && entry.distance !== null)
+          ? `<br>~${Math.round(entry.distance).toLocaleString()} mi away`
+          : (actualDoc && !isScored ? '<br><i style="color:#8b949e">(not scored)</i>' : '');
+        const winnerText = isWinner && isScored ? '<span style="color:#FFD700">🏆 WINNER! </span>' : '';
+        const popup      = `<b>${escHtml(g.name)}</b><br>${escHtml(pin.label)}${distText ? '<br>' + winnerText + distText.trim() : ''}`;
+
+        const marker = L.marker([pin.coord.lat, pin.coord.lng], { icon }).addTo(leafletMap);
+        marker.bindPopup(popup);
+        if (isWinner && isScored) {
+          marker.on('add', () => {
+            const el = marker.getElement();
+            if (el) el.classList.add('winner-marker');
+          });
+        }
+      });
+    });
+
+    // Actual location star pin
+    if (actualDoc && actualDoc.coords) {
+      const loc  = actualDoc.inState || actualDoc.outOfState || 'Actual Location';
+      const star = createStarIcon();
+      L.marker([actualDoc.coords.lat, actualDoc.coords.lng], { icon: star, zIndexOffset: 1000 })
+        .addTo(leafletMap)
+        .bindPopup(`<b style="color:#FFD700">★ ACTUAL CALL ★</b><br>${escHtml(loc)}`);
+      leafletMap.setView([actualDoc.coords.lat, actualDoc.coords.lng], 5, { animate: true });
+    }
+
+    updateMapHeader(rankings);
+  }
+
+  function updateMapHeader(rankings) {
+    const count = allGuesses.length;
+    const stats = document.getElementById('map-stats');
+
+    if (!actualDoc) {
+      stats.textContent = `${count} guess${count !== 1 ? 'es' : ''} submitted · awaiting reveal...`;
+      document.getElementById('winner-banner').style.display = 'none';
+    } else {
+      const loc = actualDoc.inState || actualDoc.outOfState;
+      stats.textContent = `${count} guess${count !== 1 ? 'es' : ''} · REVEALED: ${loc}`;
+      const winner = rankings[0];
+      if (winner && winner.distance !== null) {
+        document.getElementById('winner-name').textContent = winner.guess.name;
+        document.getElementById('winner-banner').style.display = 'block';
+      }
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // ICON CREATORS
+  // ═══════════════════════════════════════════════════════
+  function darken(hex) {
+    const n = parseInt(hex.slice(1), 16);
+    const r = Math.max(0, (n >> 16) - 55).toString(16).padStart(2, '0');
+    const g = Math.max(0, ((n >> 8) & 0xff) - 55).toString(16).padStart(2, '0');
+    const b = Math.max(0, (n & 0xff) - 55).toString(16).padStart(2, '0');
+    return `#${r}${g}${b}`;
+  }
+
+  function createCrewmateIcon(color, isWinner) {
+    const dk   = darken(color);
+    const star = isWinner ? `<text x="18" y="43" text-anchor="middle" font-size="9" fill="#FFD700" font-family="serif">★</text>` : '';
+    const html = `<div class="crewmate-pin" style="color:${color}">
+      <svg width="36" height="44" viewBox="0 0 36 44" xmlns="http://www.w3.org/2000/svg">
+        <rect x="5"  y="34" width="10" height="10" rx="4" fill="${color}"/>
+        <rect x="21" y="34" width="10" height="10" rx="4" fill="${color}"/>
+        <rect x="3"  y="19" width="30" height="19" rx="10" fill="${color}"/>
+        <rect x="29" y="21" width="6"  height="12" rx="3"  fill="${dk}"/>
+        <circle cx="18" cy="13" r="13" fill="${color}"/>
+        <ellipse cx="20" cy="11" rx="9" ry="7" fill="#1ad4ff" opacity="0.88"/>
+        <ellipse cx="15" cy="8"  rx="3" ry="2" fill="white"   opacity="0.45"/>
+        ${star}
+      </svg>
+    </div>`;
+    return L.divIcon({
+      html,
+      className: '',
+      iconSize:   [36, 44],
+      iconAnchor: [18, 44],
+      popupAnchor:[0, -46],
+    });
+  }
+
+  function createStarIcon() {
+    const html = `<div class="actual-star">
+      <svg width="48" height="48" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="24" cy="24" r="22" fill="#FFD700" stroke="#FF8C00" stroke-width="2"/>
+        <text x="24" y="31" text-anchor="middle" font-size="24" font-family="serif" fill="#1a1a1a">★</text>
+      </svg>
+    </div>`;
+    return L.divIcon({
+      html,
+      className: '',
+      iconSize:   [48, 48],
+      iconAnchor: [24, 48],
+      popupAnchor:[0, -50],
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // DROPDOWN POPULATION
+  // ═══════════════════════════════════════════════════════
+  function populateDropdowns() {
+    populateSelect('state-select',   US_STATES,  '-- Skip in-state guess --');
+    populateSelect('country-select', COUNTRIES,  '-- Skip international guess --');
+  }
+
+  function populateSelect(id, data, placeholder) {
+    const sel = document.getElementById(id);
+    sel.innerHTML = `<option value="">${placeholder}</option>`;
+    Object.keys(data).sort().forEach(name => {
+      const opt = document.createElement('option');
+      opt.value       = name;
+      opt.textContent = name;
+      sel.appendChild(opt);
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // FORM SUBMIT
+  // ═══════════════════════════════════════════════════════
+  async function handleFormSubmit() {
+    const name      = document.getElementById('name-input').value.trim();
+    const inState   = document.getElementById('state-select').value;
+    const outOfState= document.getElementById('country-select').value;
+    const btn       = document.getElementById('submit-btn');
+
+    if (!name)              return showError('Please enter your name!');
+    if (!inState && !outOfState) return showError('Pick at least one guess!');
+
+    btn.disabled    = true;
+    btn.textContent = 'SUBMITTING...';
+
+    try {
+      const record = {
+        name,
+        isActual:  false,
+        ipHash:    window._ipHash || null,
+        timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+        inState:   inState   || null,
+        inStateCoords:    inState   ? coordObj(US_STATES[inState])   : null,
+        outOfState: outOfState || null,
+        outOfStateCoords: outOfState ? coordObj(COUNTRIES[outOfState]) : null,
+      };
+
+      await db.collection('guesses').add(record);
+      showMap(false);
+    } catch (err) {
+      console.error(err);
+      showError('Something went wrong. Try refreshing!');
+      btn.disabled    = false;
+      btn.textContent = 'SUBMIT GUESS';
+    }
+  }
+
+  function coordObj([lat, lng]) { return { lat, lng }; }
+
+  // ═══════════════════════════════════════════════════════
+  // ADMIN TRIGGER (5 clicks on .app-title)
+  // ═══════════════════════════════════════════════════════
+  function handleTitleClick() {
+    titleClickCount++;
+    clearTimeout(titleClickTimer);
+    if (titleClickCount >= 5) {
+      titleClickCount = 0;
+      showPasswordModal();
+    } else {
+      titleClickTimer = setTimeout(() => { titleClickCount = 0; }, 2000);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // PASSWORD MODAL
+  // ═══════════════════════════════════════════════════════
+  function showPasswordModal() {
+    document.getElementById('modal-password').classList.add('active');
+    document.getElementById('password-input').value = '';
+    document.getElementById('password-error').textContent = '';
+    setTimeout(() => document.getElementById('password-input').focus(), 100);
+  }
+
+  function hidePasswordModal() {
+    document.getElementById('modal-password').classList.remove('active');
+  }
+
+  async function handlePasswordSubmit() {
+    const pw = document.getElementById('password-input').value;
+    if (!pw) return;
+    const hash = await sha256(pw);
+    if (hash === ADMIN_HASH) {
+      hidePasswordModal();
+      await loadActualDoc();
+      showAdminForm();
+    } else {
+      document.getElementById('password-error').textContent = 'Wrong password.';
+      document.getElementById('password-input').value = '';
+      document.getElementById('password-input').focus();
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // ADMIN REVEAL MODAL
+  // ═══════════════════════════════════════════════════════
+  function showAdminForm() {
+    const modal = document.getElementById('modal-admin');
+    modal.classList.add('active');
+
+    if (actualDoc) {
+      document.getElementById('admin-already-revealed').style.display = 'block';
+      document.getElementById('admin-reveal-form').style.display = 'none';
+      const loc = actualDoc.inState || actualDoc.outOfState || 'Unknown';
+      document.getElementById('admin-revealed-location').textContent = loc;
+    } else {
+      document.getElementById('admin-already-revealed').style.display = 'none';
+      document.getElementById('admin-reveal-form').style.display = 'block';
+      populateSelect('admin-state-select',   US_STATES,  '-- Select state --');
+      populateSelect('admin-country-select', COUNTRIES,  '-- Select country --');
+      updateAdminDropdownVisibility();
+    }
+  }
+
+  function hideAdminForm() {
+    document.getElementById('modal-admin').classList.remove('active');
+  }
+
+  function updateAdminDropdownVisibility() {
+    const type = document.querySelector('input[name="actual-type"]:checked')?.value || 'inState';
+    document.getElementById('admin-state-group').style.display   = type === 'inState'    ? 'block' : 'none';
+    document.getElementById('admin-country-group').style.display = type === 'outOfState' ? 'block' : 'none';
+  }
+
+  async function handleAdminSubmit() {
+    const type = document.querySelector('input[name="actual-type"]:checked')?.value;
+    if (!type) return;
+
+    let locName, coords;
+    if (type === 'inState') {
+      locName = document.getElementById('admin-state-select').value;
+      if (!locName) { showToast('Please select a state.'); return; }
+      coords = coordObj(US_STATES[locName]);
+    } else {
+      locName = document.getElementById('admin-country-select').value;
+      if (!locName) { showToast('Please select a country.'); return; }
+      coords = coordObj(COUNTRIES[locName]);
+    }
+
+    const btn = document.getElementById('admin-submit-btn');
+    btn.disabled    = true;
+    btn.textContent = 'REVEALING...';
+
+    try {
+      await db.collection('guesses').doc('actual').set({
+        isActual:    true,
+        actualType:  type,
+        coords,
+        inState:     type === 'inState'    ? locName : null,
+        outOfState:  type === 'outOfState' ? locName : null,
+        timestamp:   firebase.firestore.FieldValue.serverTimestamp(),
+      });
+      hideAdminForm();
+      showMap(false);
+    } catch (err) {
+      console.error(err);
+      showToast('Submit failed. The reveal may already be recorded.');
+      btn.disabled    = false;
+      btn.textContent = 'REVEAL NOW';
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // UI HELPERS
+  // ═══════════════════════════════════════════════════════
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('visible');
+    setTimeout(() => t.classList.remove('visible'), 4000);
+  }
+
+  function showError(msg) {
+    const el = document.getElementById('form-error');
+    el.textContent = msg;
+    setTimeout(() => { el.textContent = ''; }, 3500);
+  }
+
+  function escHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // BOOT
+  // ═══════════════════════════════════════════════════════
+  window.addEventListener('DOMContentLoaded', initApp);
+  </script>
+</body>
+</html>
