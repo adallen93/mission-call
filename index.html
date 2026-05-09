@@ -1009,6 +1009,24 @@
       colorMap[entry.guess.id] = CREW_COLORS[i % CREW_COLORS.length];
     });
 
+    // Track how many pins are at each coordinate so we can jitter duplicates
+    const coordCount = {};
+    const jitterOffset = 0.8; // degrees (~55 miles) max spiral radius
+
+    function jitteredCoord(lat, lng) {
+      const key = `${lat.toFixed(4)},${lng.toFixed(4)}`;
+      coordCount[key] = (coordCount[key] || 0) + 1;
+      const n = coordCount[key] - 1;
+      if (n === 0) return { lat, lng };
+      // Arrange duplicates in a small spiral around the original
+      const angle = (n - 1) * 2.4; // golden angle spacing
+      const radius = jitterOffset * 0.15 * Math.ceil(n / 6);
+      return {
+        lat: lat + radius * Math.cos(angle),
+        lng: lng + radius * Math.sin(angle),
+      };
+    }
+
     rankings.forEach((entry, rank) => {
       const g     = entry.guess;
       const color = colorMap[g.id];
@@ -1031,7 +1049,8 @@
         const winnerText = isWinner && isScored ? '<span style="color:#FFD700">🏆 WINNER! </span>' : '';
         const popup      = `<b>${escHtml(g.name)}</b><br>${escHtml(pin.label)}${distText ? '<br>' + winnerText + distText.trim() : ''}`;
 
-        const marker = L.marker([pin.coord.lat, pin.coord.lng], { icon }).addTo(leafletMap);
+        const display = jitteredCoord(pin.coord.lat, pin.coord.lng);
+        const marker = L.marker([display.lat, display.lng], { icon }).addTo(leafletMap);
         marker.bindPopup(popup);
         if (isWinner && isScored) {
           marker.on('add', () => {
