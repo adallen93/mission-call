@@ -29,12 +29,12 @@
 //   }
 
 window.firebaseConfig = {
-  apiKey:            "YOUR_API_KEY",
-  authDomain:        "YOUR_PROJECT_ID.firebaseapp.com",
-  projectId:         "YOUR_PROJECT_ID",
-  storageBucket:     "YOUR_PROJECT_ID.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId:             "YOUR_APP_ID",
+  apiKey: "AIzaSyCnt4A_xlUlMyG6PLIsoxYYHRrB65KvXyk",
+  authDomain: "taylor-harrington-mission-call.firebaseapp.com",
+  projectId: "taylor-harrington-mission-call",
+  storageBucket: "taylor-harrington-mission-call.firebasestorage.app",
+  messagingSenderId: "981118766290",
+  appId: "1:981118766290:web:5872ec3ddb00176794710b"
 };
 
 // ── STEP 2: Jawg Maps (free map tiles) ──────────────────────
@@ -43,7 +43,7 @@ window.firebaseConfig = {
 // 2c. Copy your default access token and paste it below.
 // Free tier: 75,000 tile requests/month — more than enough.
 
-window.JAWG_TOKEN = "YOUR_JAWG_ACCESS_TOKEN";
+window.JAWG_TOKEN = "HqURUFMdSzQoZhivlzbyrSp5D0DjRxyJVn2TEGpiUhddL1ge4oQUkTUqZTGsAR6n";
 
 // ── STEP 3: Deploy ──────────────────────────────────────────
 // 3a. Push the mission-call/ folder to a GitHub repository.
